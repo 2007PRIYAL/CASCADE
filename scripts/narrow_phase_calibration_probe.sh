@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD_DIR="${1:-$ROOT_DIR/build}"
+SATELLITES="${2:-50}"
+DEBRIS="${3:-10000}"
+TICKS="${4:-5}"
+STEP_S="${5:-30}"
+
+# Optional narrow-phase tuning args (pass-through)
+HIGH_REL_SPEED_KM_S="${6:-8.0}"
+HIGH_REL_SPEED_EXTRA_BAND_KM="${7:-0.10}"
+FULL_REFINE_BUDGET_BASE="${8:-64}"
+FULL_REFINE_BUDGET_MIN="${9:-8}"
+FULL_REFINE_BUDGET_MAX="${10:-192}"
+FULL_REFINE_BAND_KM="${11:-0.20}"
+REFINE_BAND_KM="${12:-0.10}"
+TCA_GUARD_KM="${13:-0.02}"
+FULL_REFINE_SAMPLES="${14:-16}"
+FULL_REFINE_SUBSTEP_S="${15:-1.0}"
+MICRO_REFINE_MAX_STEP_S="${16:-5.0}"
+FIXTURE_PAIRS_PER_SAT="${17:-3}"
+FIXTURE_REL_SPEED_KM_S="${18:-9.0}"
+FIXTURE_OFFSET_KM="${19:-0.33}"
+FIXTURE_OFFSET_JITTER_KM="${20:-0.01}"
+MOID_SHADOW="${21:-1}"
+MOID_FILTER="${22:-0}"
+MOID_SAMPLES="${23:-24}"
+MOID_REJECT_THRESHOLD_KM="${24:-2.0}"
+MOID_MAX_E="${25:-0.2}"
+
+cmake --build "$BUILD_DIR" --target narrow_phase_calibration_probe
+
+"$BUILD_DIR/narrow_phase_calibration_probe" \
+  "$SATELLITES" \
+  "$DEBRIS" \
+  "$TICKS" \
+  "$STEP_S" \
+  "$HIGH_REL_SPEED_KM_S" \
+  "$HIGH_REL_SPEED_EXTRA_BAND_KM" \
+  "$FULL_REFINE_BUDGET_BASE" \
+  "$FULL_REFINE_BUDGET_MIN" \
+  "$FULL_REFINE_BUDGET_MAX" \
+  "$FULL_REFINE_BAND_KM" \
+  "$REFINE_BAND_KM" \
+  "$TCA_GUARD_KM" \
+  "$FULL_REFINE_SAMPLES" \
+  "$FULL_REFINE_SUBSTEP_S" \
+  "$MICRO_REFINE_MAX_STEP_S" \
+  "$FIXTURE_PAIRS_PER_SAT" \
+  "$FIXTURE_REL_SPEED_KM_S" \
+  "$FIXTURE_OFFSET_KM" \
+  "$FIXTURE_OFFSET_JITTER_KM" \
+  "$MOID_SHADOW" \
+  "$MOID_FILTER" \
+  "$MOID_SAMPLES" \
+  "$MOID_REJECT_THRESHOLD_KM" \
+  "$MOID_MAX_E"
+
+echo "narrow-phase calibration probe: PASS"

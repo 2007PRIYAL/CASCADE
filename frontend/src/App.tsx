@@ -1,0 +1,64 @@
+import { useEffect, useState } from 'react';
+import { useHashRoute } from './app/useHashRoute';
+import BootSequence from './components/BootSequence';
+import { DashboardProvider, useDashboard } from './dashboard/DashboardContext';
+import { AppShell } from './layout/AppShell';
+import { CommandPage } from './pages/CommandPage';
+import { TrackPage } from './pages/TrackPage';
+import { ThreatPage } from './pages/ThreatPage';
+import { BurnOpsPage } from './pages/BurnOpsPage';
+import { EvasionPage } from './pages/EvasionPage';
+import { FleetStatusPage } from './pages/FleetStatusPage';
+
+function DashboardApp() {
+  const { booted, setBooted } = useDashboard();
+  const { pageId, navigate } = useHashRoute();
+  const [viewportWidth, setViewportWidth] = useState(() => (
+    typeof window === 'undefined' ? 1440 : window.innerWidth
+  ));
+  const [viewportHeight, setViewportHeight] = useState(() => (
+    typeof window === 'undefined' ? 900 : window.innerHeight
+  ));
+
+  useEffect(() => {
+    const onResize = () => {
+      setViewportWidth(window.innerWidth);
+      setViewportHeight(window.innerHeight);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const isNarrow = viewportWidth < 1080;
+  const isCompact = viewportWidth < 760;
+  const isShort = viewportHeight < 820;
+
+  if (!booted) {
+    return <BootSequence onComplete={() => setBooted(true)} />;
+  }
+
+  return (
+    <AppShell
+      pageId={pageId}
+      navigate={navigate}
+      isNarrow={isNarrow}
+      isCompact={isCompact}
+      isShort={isShort}
+    >
+      {pageId === 'command' && <CommandPage isNarrow={isNarrow} isCompact={isCompact} />}
+      {pageId === 'track' && <TrackPage isNarrow={isNarrow} isCompact={isCompact} />}
+      {pageId === 'threat' && <ThreatPage isNarrow={isNarrow} isCompact={isCompact} />}
+      {pageId === 'burn-ops' && <BurnOpsPage isNarrow={isNarrow} isCompact={isCompact} />}
+      {pageId === 'evasion' && <EvasionPage isNarrow={isNarrow} isCompact={isCompact} />}
+      {pageId === 'fleet-status' && <FleetStatusPage isNarrow={isNarrow} isCompact={isCompact} />}
+    </AppShell>
+  );
+}
+
+export default function App() {
+  return (
+    <DashboardProvider>
+      <DashboardApp />
+    </DashboardProvider>
+  );
+}
