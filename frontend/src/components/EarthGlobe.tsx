@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { SatelliteSnapshot, DebrisTuple, ConjunctionEvent } from '../types/api';
 import { statusColor } from '../types/api';
+import { COASTLINE_POLYGONS } from '../data/coastlines';
 
 // ---- constants ----
 
@@ -130,7 +131,84 @@ function createNebulaTexture(
   return tex;
 }
 
+// Procedural fallback Earth texture using COASTLINE_POLYGONS (renders immediately offline)
+function createProceduralEarthTexture(): THREE.CanvasTexture {
+  const width = 2048;
+  const height = 1024;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d')!;
+
+  // Deep oceanic blue gradient (polar regions slightly darker)
+  const oceanGrad = ctx.createLinearGradient(0, 0, 0, height);
+  oceanGrad.addColorStop(0, '#040d1a');
+  oceanGrad.addColorStop(0.2, '#081d38');
+  oceanGrad.addColorStop(0.5, '#0b2647');
+  oceanGrad.addColorStop(0.8, '#081d38');
+  oceanGrad.addColorStop(1, '#040d1a');
+  ctx.fillStyle = oceanGrad;
+  ctx.fillRect(0, 0, width, height);
+
+  // Subtle latitude & longitude graticule
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.05)';
+  ctx.lineWidth = 1;
+  for (let lat = -80; lat <= 80; lat += 20) {
+    const y = ((90 - lat) / 180) * height;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+  for (let lon = -180; lon <= 180; lon += 30) {
+    const x = ((lon + 180) / 360) * width;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+
+  // Draw continent landmasses from COASTLINE_POLYGONS
+  ctx.fillStyle = '#1c3d2e'; // Realistic rich terrain green
+  ctx.strokeStyle = '#2d6a4f';
+  ctx.lineWidth = 1.5;
+
+  for (const ring of COASTLINE_POLYGONS) {
+    if (ring.length < 3) continue;
+    ctx.beginPath();
+    for (let i = 0; i < ring.length; i++) {
+      const [lon, lat] = ring[i];
+      const x = ((lon + 180) / 360) * width;
+      const y = ((90 - lat) / 180) * height;
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Polar ice caps (Antarctica + Greenland / Arctic)
+  ctx.fillStyle = 'rgba(235, 248, 255, 0.88)';
+  ctx.beginPath();
+  ctx.rect(0, height * 0.91, width, height * 0.09);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.rect(0, 0, width, height * 0.04);
+  ctx.fill();
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 // Fresnel atmosphere shader (BackSide on a sphere slightly larger than Earth).
+// Transparent in center facing the camera, glowing blue limb halo at glancing edges.
 const atmosphereVertexShader = `
   varying vec3 vNormal;
   varying vec3 vViewDir;
@@ -146,11 +224,14 @@ const atmosphereFragmentShader = `
   varying vec3 vNormal;
   varying vec3 vViewDir;
   void main() {
-    float d = dot(vNormal, vViewDir);
-    float inner = clamp(-d, 0.0, 1.0);
-    float glow = sqrt(inner) * 1.4;
-    vec3 col = vec3(0.30, 0.65, 1.0);
-    gl_FragColor = vec4(col * glow, glow);
+    // BackSide ray skimming tangent to sphere has dot(vNormal, vViewDir) ~ 0.0
+    // Center ray directly through sphere center has dot(vNormal, vViewDir) ~ -1.0
+    float d = abs(dot(vNormal, vViewDir));
+    float rim = clamp(1.0 - d, 0.0, 1.0);
+    // Smooth atmospheric limb gradient: 0 in center, glowing only at horizon
+    float glow = pow(rim, 3.2) * 1.5;
+    vec3 col = vec3(0.28, 0.62, 1.0);
+    gl_FragColor = vec4(col * glow, glow * 0.85);
   }
 `;
 
@@ -377,50 +458,71 @@ export default function EarthGlobe({
     const earthGroup = new THREE.Group();
     scene.add(earthGroup);
 
-    // load EARTH.glb
+    // Immediate solid fallback Earth mesh (renders instantly offline,
+    // guarantees continents & oceans are visible, and blocks stars from shining through)
+    const fallbackTex = createProceduralEarthTexture();
+    const fallbackGeo = new THREE.SphereGeometry(EARTH_VISUAL_RADIUS, 64, 64);
+    const fallbackMat = new THREE.MeshStandardMaterial({
+      map: fallbackTex,
+      roughness: 0.85,
+      metalness: 0.1,
+    });
+    let fallbackEarthMesh: THREE.Mesh | null = new THREE.Mesh(fallbackGeo, fallbackMat);
+    earthGroup.add(fallbackEarthMesh);
+
+    // load high-res EARTH.glb
     const loader = new GLTFLoader();
     const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
     const earthModelPath = `${base}/earth_model/EARTH.glb`;
-    loader.load(earthModelPath, (gltf) => {
-      const model = gltf.scene;
-      // normalize scale -- find bounding sphere and scale to radius ~1
-      const box = new THREE.Box3().setFromObject(model);
-      const sphere = new THREE.Sphere();
-      box.getBoundingSphere(sphere);
-      const scaleFactor = 1 / sphere.radius;
-      model.scale.setScalar(scaleFactor);
-      model.position.sub(sphere.center.multiplyScalar(scaleFactor));
+    loader.load(
+      earthModelPath,
+      (gltf) => {
+        const model = gltf.scene;
+        // normalize scale -- find bounding sphere and scale to radius ~1
+        const box = new THREE.Box3().setFromObject(model);
+        const sphere = new THREE.Sphere();
+        box.getBoundingSphere(sphere);
+        const scaleFactor = 1 / sphere.radius;
+        model.scale.setScalar(scaleFactor);
+        model.position.sub(sphere.center.multiplyScalar(scaleFactor));
 
-      // Use the Earth's own diffuse texture as emissive map so surface
-      // details glow with a subtle blue tint matching the atmosphere halo.
-      // We must create a NEW material with emissiveMap specified at construction
-      // time -- mutating an existing material's emissiveMap and setting needsUpdate
-      // does not reliably trigger shader recompilation with USE_EMISSIVEMAP define.
-      model.traverse((child) => {
-        if ((child as THREE.Mesh).isMesh) {
-          const mesh = child as THREE.Mesh;
-          const oldMat = mesh.material as THREE.MeshStandardMaterial;
-          if (oldMat && oldMat.isMeshStandardMaterial && oldMat.map) {
-            const newMat = new THREE.MeshStandardMaterial({
-              map: oldMat.map,
-              normalMap: oldMat.normalMap,
-              metalnessMap: oldMat.metalnessMap,
-              roughnessMap: oldMat.roughnessMap,
-              aoMap: oldMat.aoMap,
-              metalness: oldMat.metalness,
-              roughness: oldMat.roughness,
-              emissiveMap: oldMat.map,                         // diffuse texture as emission source
-              emissive: new THREE.Color(0.4, 0.55, 0.9),      // blue tint matching halo
-              emissiveIntensity: 0.5,
-            });
-            mesh.material = newMat;
-            oldMat.dispose();
+        // Use Earth's photorealistic diffuse and normal textures with natural PBR shading
+        model.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            const mesh = child as THREE.Mesh;
+            const oldMat = mesh.material as THREE.MeshStandardMaterial;
+            if (oldMat && oldMat.isMeshStandardMaterial && oldMat.map) {
+              const newMat = new THREE.MeshStandardMaterial({
+                map: oldMat.map,
+                normalMap: oldMat.normalMap,
+                metalnessMap: oldMat.metalnessMap,
+                roughnessMap: oldMat.roughnessMap,
+                aoMap: oldMat.aoMap,
+                metalness: 0.1,
+                roughness: 0.85,
+              });
+              mesh.material = newMat;
+              oldMat.dispose();
+            }
           }
-        }
-      });
+        });
 
-      earthGroup.add(model);
-    });
+        // Cleanly retire fallback sphere now that high-res model is ready
+        if (fallbackEarthMesh) {
+          earthGroup.remove(fallbackEarthMesh);
+          fallbackEarthMesh.geometry.dispose();
+          if (fallbackMat.map) fallbackMat.map.dispose();
+          fallbackMat.dispose();
+          fallbackEarthMesh = null;
+        }
+
+        earthGroup.add(model);
+      },
+      undefined,
+      (error) => {
+        console.warn('[EarthGlobe] Could not load high-res EARTH.glb, keeping procedural fallback globe:', error);
+      },
+    );
 
     // ---- Fresnel atmospheric glow ----
     {
