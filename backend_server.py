@@ -22,6 +22,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import math
+import mimetypes
 import os
 import sys
 import threading
@@ -29,6 +30,12 @@ import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
+
+mimetypes.add_type("model/gltf-binary", ".glb")
+mimetypes.add_type("image/svg+xml", ".svg")
+mimetypes.add_type("audio/mpeg", ".mp3")
+
+DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist")
 
 MU_KM3_S2 = 398600.4418
 R_EARTH_KM = 6378.137
@@ -759,7 +766,41 @@ class CascadeHTTPHandler(BaseHTTPRequestHandler):
             self.send_json(200, {"status": "NOMINAL", "method": "KEPLER_J2_RK4", "tick_rate_hz": 1.0})
 
         else:
-            self.send_json(404, {"error": "Not Found", "path": path})
+            self.serve_static(path)
+
+    def serve_static(self, path: str):
+        if not os.path.isdir(DIST_DIR):
+            self.send_json(404, {"error": "Frontend dist not built", "path": path})
+            return
+
+        rel_path = path.lstrip("/")
+        if not rel_path or rel_path.endswith("/"):
+            rel_path = os.path.join(rel_path, "index.html")
+
+        full_path = os.path.join(DIST_DIR, rel_path)
+        if not os.path.isfile(full_path):
+            # SPA fallback
+            full_path = os.path.join(DIST_DIR, "index.html")
+
+        if not os.path.isfile(full_path):
+            self.send_json(404, {"error": "File not found", "path": path})
+            return
+
+        ctype, _ = mimetypes.guess_type(full_path)
+        if not ctype:
+            ctype = "application/octet-stream"
+
+        try:
+            with open(full_path, "rb") as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_cors_headers()
+            self.end_headers()
+            self.wfile.write(content)
+        except Exception as e:
+            self.send_json(500, {"error": str(e)})
 
     def do_POST(self):
         parsed = urlparse(self.path)

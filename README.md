@@ -17,7 +17,7 @@
   <i>Built from scratch for <b>Hack Celestia</b> by <b>Priyal Gupta</b></i>
 </p>
 
-[**Architecture Deep Dive**](ARCHITECTURE.md) · [**Quick Start Guide**](#-quick-start-guide) · [**Live Console Views**](#️-mission-console-modules) · [**REST API Reference**](#-rest-api-reference)
+[🚀 **Live Mission Console Demo**](https://2007priyal.github.io/CASCADE/) · [**Architecture Deep Dive**](ARCHITECTURE.md) · [**Quick Start Guide**](#-quick-start-guide) · [**REST API Reference**](#-rest-api-reference)
 
 </div>
 
@@ -129,9 +129,14 @@ Measured using the high-performance benchmark suite (`tools/phase3_tick_benchmar
 
 ## 🚀 Quick Start Guide
 
-CASCADE supports two simple execution paths: **Native Standalone (Zero Dependencies)** or **Containerized (Docker)**.
+### 🌐 Live Web Deployment (GitHub Pages)
 
-### Option A: Standalone Quickstart (Mac / Linux / Windows)
+Experience the full 3D Mission Console and physics simulation directly in your browser:
+👉 **[https://2007priyal.github.io/CASCADE/](https://2007priyal.github.io/CASCADE/)**
+
+---
+
+### Option A: Standalone Unified Server (Mac / Linux / Windows)
 
 No Docker or CMake required! Runs directly using Python 3 and Node.js.
 

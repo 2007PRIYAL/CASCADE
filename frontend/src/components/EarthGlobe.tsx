@@ -379,7 +379,9 @@ export default function EarthGlobe({
 
     // load EARTH.glb
     const loader = new GLTFLoader();
-    loader.load('/earth_model/EARTH.glb', (gltf) => {
+    const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+    const earthModelPath = `${base}/earth_model/EARTH.glb`;
+    loader.load(earthModelPath, (gltf) => {
       const model = gltf.scene;
       // normalize scale -- find bounding sphere and scale to radius ~1
       const box = new THREE.Box3().setFromObject(model);

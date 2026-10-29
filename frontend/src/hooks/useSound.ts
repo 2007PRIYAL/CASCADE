@@ -15,10 +15,12 @@ const audioCache = new Map<string, HTMLAudioElement>();
 const soundLastPlayedAt = new Map<SoundName, number>();
 
 function getAudio(src: string, volume: number): HTMLAudioElement {
-  let audio = audioCache.get(src);
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+  const fullSrc = src.startsWith('http') || src.startsWith(base) ? src : `${base}${src}`;
+  let audio = audioCache.get(fullSrc);
   if (!audio) {
-    audio = new Audio(src);
-    audioCache.set(src, audio);
+    audio = new Audio(fullSrc);
+    audioCache.set(fullSrc, audio);
   }
   audio.volume = volume;
   return audio;

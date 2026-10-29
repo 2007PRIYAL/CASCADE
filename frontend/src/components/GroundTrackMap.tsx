@@ -404,7 +404,8 @@ export const GroundTrackMap = React.memo(function GroundTrackMap({ snapshot, sel
       // Fallback: coastline polygons will be drawn instead
       console.warn('[GroundTrackMap] Failed to load earth_mercator.svg — using polygon fallback');
     };
-    img.src = '/earth_mercator.svg';
+    const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+    img.src = `${base}/earth_mercator.svg`;
   }, []);
 
   const draw = useCallback(() => {
